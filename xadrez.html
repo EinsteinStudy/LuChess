@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Xadrez Offline do Luazinho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --sq: 72px;
+      --light: #f0d9b5;
+      --dark: #b58863;
+      --last: #a9d18e;
+      --hint: #ffe183aa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #2c3e50;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      display: grid;
+      place-items: start center;
+      gap: 16px;
+      overflow-x: hidden;
+      /* impede “pulo” lateral */
+    }
+
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .wrap {
+      display: grid;
+      gap: 12px;
+    }
+
+    .topbar,
+    .controls,
+    .botbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: #1f2a36;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    /* Timers */
+    .timer {
+      background: #1f2a36;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      min-width: 92px;
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
+
+    .timer.active {
+      background: #27ae60;
+      color: #fff;
+    }
+
+    .timer-ctrl {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      background: #1f2a36;
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+
+    .timer-ctrl input {
+      width: 64px;
+      background: #2e3b49;
+      border: 0;
+      color: #fff;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 14px;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(8, var(--sq));
+      grid-template-rows: repeat(8, var(--sq));
+      border: 5px solid #222;
+      border-radius: 12px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
+      overflow: hidden;
+      touch-action: none;
+      background: transparent;
+      /* antes era #000 */
+    }
+
+    .sq {
+      width: var(--sq);
+      height: var(--sq);
+      display: grid;
+      place-items: center;
+      user-select: none;
+      position: relative;
+    }
+
+    .light {
+      background: var(--light);
+    }
+
+    .dark {
+      background: #b58863;
+    }
+
+    .last {
+      background: var(--last) !important;
+    }
+
+    .drop-ok {
+      outline: 3px dashed #ffd800;
+      outline-offset: -3px;
+    }
+
+    .hint::after {
+      content: '';
+      width: 44%;
+      height: 44%;
+      border-radius: 50%;
+      background: var(--hint);
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Peças e microanimações */
+    .sq img {
+      width: 90%;
+      height: 90%;
+      pointer-events: none;
+      transition: transform .22s ease-out, opacity .22s ease-out;
+      will-change: transform, opacity;
+    }
+
+    .last img {
+      transform: scale(1.04);
+    }
+
+    button,
+    select,
+    label {
+      background: #27ae60;
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    select {
+      background: #2e3b49;
+      cursor: pointer;
+    }
+
+    label {
+      background: transparent;
+      padding: 0;
+      cursor: default;
+    }
+
+    button:hover,
+    select:hover {
+      filter: brightness(1.08);
+    }
+
+    button:focus,
+    select:focus {
+      outline: 2px solid #ffd800;
+      outline-offset: 2px;
+    }
+
+    input[type="range"] {
+      width: 160px;
+    }
+
+    .label {
+      font-size: 14px;
+      opacity: .9;
+    }
+
+    @media (max-width: 700px) {
+      :root {
+        --sq: 52px;
+      }
+    }
+
+    /* Modal de promoção */
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(0, 0, 0, .5);
+    }
+
+    .modal.open {
+      display: grid;
+    }
+
+    .card {
+      background: #1f2a36;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+    }
+
+    .promo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 72px);
+      gap: 10px;
+    }
+
+    .promo-grid button {
+      background: #2e3b49;
+      border-radius: 8px;
+      border: 0;
+      padding: 8px;
+    }
+
+    .promo-grid img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>♟ Xadrez Brabooo!!</h1>
+
+    <div class="topbar">
+      <div id="turno" class="badge">Turno: brancas</div>
+      <div id="status" class="badge">Pronto</div>
+      <div id="thinking" class="badge" style="display:none;">Bot pensando...</div>
+
+      <!-- Timers -->
+      <div id="timerWhite" class="timer">05:00</div>
+      <div id="timerBlack" class="timer">05:00</div>
+      <div class="timer-ctrl">
+        <span class="label">Minutos:</span>
+        <input id="timer-minutes" type="number" min="1" max="60" value="5" />
+      </div>
+    </div>
+
+    <div id="board" class="board" aria-label="Tabuleiro de xadrez"></div>
+
+    <div class="controls">
+      <button id="btn-reset">Reiniciar</button>
+      <button id="btn-undo">Desfazer</button>
+    </div>
+
+    <div class="botbar">
+      <span class="label">Lado do bot:</span>
+      <select id="bot-side">
+        <option value="none">Desligado</option>
+        <option value="w">Brancas</option>
+        <option value="b" selected>Pretas</option>
+      </select>
+
+      <label for="botDifficulty" class="label">Dificuldade do bot:</label>
+      <select id="botDifficulty">
+        <option value="fácil">Fácil</option>
+        <option value="médio" selected>Médio</option>
+        <option value="difícil">Difícil</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Modal de promoção -->
+  <div id="promoModal" class="modal" role="dialog" aria-modal="true" aria-label="Escolha a peça para promoção">
+    <div class="card">
+      <div style="margin-bottom:10px">Escolha a peça para promoção</div>
+      <div class="promo-grid" id="promoChoices"></div>
+    </div>
+  </div>
+
+  <!-- Motor de regras local -->
+  <script src="js/chess.min.js"></script>
+
+  <script>
+    // Imagens esperadas em img/
+    const IMG = {
+      p: "bp.svg", r: "br.svg", n: "bn.svg", b: "bb.svg", q: "bq.svg", k: "bk.svg",
+      P: "wp.svg", R: "wr.svg", N: "wn.svg", B: "wb.svg", Q: "wq.svg", K: "wk.svg"
+    };
+
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const turnoEl = document.getElementById('turno');
+    const btnReset = document.getElementById('btn-reset');
+    const btnUndo = document.getElementById('btn-undo');
+
+    const botSideSel = document.getElementById('bot-side');
+    const thinkingBadge = document.getElementById('thinking');
+
+    const promoModal = document.getElementById('promoModal');
+    const promoChoices = document.getElementById('promoChoices');
+
+    // Timers
+    const timerWhiteEl = document.getElementById('timerWhite');
+    const timerBlackEl = document.getElementById('timerBlack');
+    const timerMinutesInput = document.getElementById('timer-minutes');
+    let whiteTime = 300; // segundos
+    let blackTime = 300;
+    let timerInterval = null;
+
+    function fmt(sec) {
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return m + ':' + s;
+    }
+    function updateTimerUI() {
+      timerWhiteEl.textContent = fmt(whiteTime);
+      timerBlackEl.textContent = fmt(blackTime);
+      if (game.game_over()) {
+        timerWhiteEl.classList.remove('active');
+        timerBlackEl.classList.remove('active');
+        return;
+      }
+      if (timerInterval) { // só destaca ativo quando o relógio estiver rodando
+        if (game.turn() === 'w') {
+          timerWhiteEl.classList.add('active');
+          timerBlackEl.classList.remove('active');
+        } else {
+          timerBlackEl.classList.add('active');
+          timerWhiteEl.classList.remove('active');
+        }
+      } else {
+        timerWhiteEl.classList.remove('active');
+        timerBlackEl.classList.remove('active');
+      }
+    }
+    function stopClock() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      updateTimerUI();
+    }
+    function startClock() {
+      if (timerInterval) return;
+      timerInterval = setInterval(() => {
+        if (game.game_over()) { stopClock(); return; }
+        if (game.turn() === 'w') {
+          whiteTime = Math.max(0, whiteTime - 1);
+          if (whiteTime === 0) return endGameByTime('Pretas');
+        } else {
+          blackTime = Math.max(0, blackTime - 1);
+          if (blackTime === 0) return endGameByTime('Brancas');
+        }
+        updateTimerUI();
+      }, 1000);
+      updateTimerUI();
+    }
+    function resetClocksFromInput() {
+      let mins = parseInt(timerMinutesInput.value, 10);
+      if (isNaN(mins)) mins = 5;
+      mins = Math.max(1, Math.min(60, mins));
+      whiteTime = blackTime = mins * 60;
+      updateTimerUI();
+    }
+    function endGameByTime(winner) {
+      stopClock();
+      statusEl.textContent = 'Tempo esgotado! ' + winner + ' venceram.';
+      uiLocked = true;
+    }
+    timerMinutesInput.addEventListener('input', resetClocksFromInput);
+
+    // Estado do jogo
+    const game = new Chess();
+    let lastMove = null;
+    let dragFrom = null;
+    let selected = null;
+    let hints = [];
+    let pendingPromotion = null;
+    let uiLocked = false;
+
+    // Evita “pulo” e listra preta quando o modal abre (bloqueia scroll sem mudar largura do layout)
+    let bodyPadRightBackup = '';
+    function getScrollbarWidth() {
+      const el = document.createElement('div');
+      el.style.visibility = 'hidden';
+      el.style.overflow = 'scroll';
+      el.style.msOverflowStyle = 'scrollbar';
+      el.style.position = 'absolute';
+      el.style.top = '-9999px';
+      el.style.width = '100px';
+      el.style.height = '100px';
+      document.body.appendChild(el);
+      const inner = document.createElement('div');
+      inner.style.width = '100%';
+      inner.style.height = '200px';
+      el.appendChild(inner);
+      const width = el.offsetWidth - el.clientWidth;
+      document.body.removeChild(el);
+      return width;
+    }
+    function lockScroll() {
+      const sw = getScrollbarWidth();
+      bodyPadRightBackup = document.body.style.paddingRight || '';
+      if (sw > 0) document.body.style.paddingRight = sw + 'px';
+      document.body.style.overflow = 'hidden';
+    }
+    function unlockScroll() {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = bodyPadRightBackup;
+    }
+
+    function algebraic(r, c) { return String.fromCharCode(97 + c) + (8 - r); }
+    function rcFromAlg(sq) { return { c: sq.charCodeAt(0) - 97, r: 8 - parseInt(sq[1], 10) }; }
+
+    function isPromotionMove(from, to) {
+      const piece = game.get(from);
+      if (!piece || piece.type !== 'p') return false;
+      const destRank = parseInt(to[1], 10);
+      return (piece.color === 'w' && destRank === 8) || (piece.color === 'b' && destRank === 1);
+    }
+
+    function legalMovesFrom(from) {
+      return game.moves({ square: from, verbose: true }).map(m => m.to);
+    }
+
+    function openPromotion(color, from, to) {
+      pendingPromotion = { from, to, color };
+      promoChoices.innerHTML = '';
+      const types = ['q', 'r', 'b', 'n'];
+      for (const t of types) {
+        const key = (color === 'w') ? t.toUpperCase() : t;
+        const btn = document.createElement('button');
+        const img = document.createElement('img');
+        img.src = "img/" + IMG[key];
+        img.alt = key;
+        btn.appendChild(img);
+        btn.addEventListener('click', () => {
+          doMove(from, to, t);
+          closePromotion();
+        });
+        promoChoices.appendChild(btn);
+      }
+      promoModal.classList.add('open');
+      lockScroll();
+    }
+    function closePromotion() {
+      pendingPromotion = null;
+      promoModal.classList.remove('open');
+      unlockScroll();
+    }
+
+    function setStatus() {
+      turnoEl.textContent = 'Turno: ' + (game.turn() === 'w' ? 'brancas' : 'pretas');
+      if (game.in_checkmate()) {
+        statusEl.textContent = 'Xeque-mate! ' + (game.turn() === 'w' ? 'Pretas' : 'Brancas') + ' venceram.';
+      } else if (game.in_stalemate()) {
+        statusEl.textContent = 'Empate por afogamento.';
+      } else if (game.in_threefold_repetition()) {
+        statusEl.textContent = 'Empate por repetição tripla.';
+      } else if (game.insufficient_material()) {
+        statusEl.textContent = 'Empate por material insuficiente.';
+      } else if (game.in_draw()) {
+        statusEl.textContent = 'Empate (50 lances ou posição morta).';
+      } else if (game.in_check()) {
+        statusEl.textContent = 'Xeque!';
+      } else {
+        statusEl.textContent = 'Pronto';
+      }
+    }
+    function isHumanTurn() {
+      // Retorna true se o lado atual NÃO for controlado pelo bot
+      return botSideSel.value === 'none' || botSideSel.value !== game.turn();
+    }
+
+    function drawBoard() {
+      const frag = document.createDocumentFragment();
+      const b = game.board();
+
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const sq = document.createElement('div');
+          sq.className = 'sq ' + (((r + c) % 2) ? 'dark' : 'light');
+          sq.dataset.r = r; sq.dataset.c = c;
+
+          if (lastMove) {
+            const a = rcFromAlg(lastMove.from);
+            const b2 = rcFromAlg(lastMove.to);
+            if ((a.r === r && a.c === c) || (b2.r === r && b2.c === c)) {
+              sq.classList.add('last');
+            }
+          }
+
+          const alg = algebraic(r, c);
+          if (hints.includes(alg)) sq.classList.add('hint');
+
+          const piece = b[r][c];
+          if (piece) {
+            const key = piece.color === 'w' ? piece.type.toUpperCase() : piece.type;
+            const img = document.createElement('img');
+            img.src = "img/" + IMG[key];
+            img.alt = (piece.color === 'w' ? 'Branca ' : 'Preta ') + key.toUpperCase();
+            sq.appendChild(img);
+          }
+
+          const humanTurn = isHumanTurn();
+          sq.draggable = humanTurn && !uiLocked;
+          if (humanTurn && !uiLocked) {
+            sq.addEventListener('dragstart', (e) => {
+              dragFrom = { r: parseInt(sq.dataset.r), c: parseInt(sq.dataset.c) };
+              e.dataTransfer.effectAllowed = "move";
+              const fromAlg = algebraic(dragFrom.r, dragFrom.c);
+              const p = game.get(fromAlg);
+              if (!p || p.color !== game.turn()) { dragFrom = null; return; }
+              hints = legalMovesFrom(fromAlg);
+              drawHintsOnly();
+            });
+            sq.addEventListener('dragover', (e) => { e.preventDefault(); sq.classList.add('drop-ok'); });
+            sq.addEventListener('dragleave', () => { sq.classList.remove('drop-ok'); });
+            sq.addEventListener('drop', (e) => {
+              e.preventDefault(); sq.classList.remove('drop-ok');
+              if (!dragFrom) return;
+              tryMoveByRC(dragFrom.r, dragFrom.c, parseInt(sq.dataset.r), parseInt(sq.dataset.c));
+              dragFrom = null; hints = [];
+            });
+            sq.addEventListener('click', () => {
+              const r0 = parseInt(sq.dataset.r), c0 = parseInt(sq.dataset.c);
+              const here = algebraic(r0, c0);
+              if (!selected) {
+                const p = game.get(here);
+                if (p && p.color === game.turn()) {
+                  selected = { r: r0, c: c0 };
+                  hints = legalMovesFrom(here);
+                  drawBoard();
+                }
+              } else {
+                tryMoveByRC(selected.r, selected.c, r0, c0);
+                selected = null; hints = [];
+              }
+            });
+          }
+
+          frag.appendChild(sq);
+        }
+      }
+      boardEl.replaceChildren(frag);
+      setStatus();
+      updateTimerUI();
+    }
+
+    function drawHintsOnly() {
+      const squares = boardEl.querySelectorAll('.sq');
+      squares.forEach(sq => {
+        const r = parseInt(sq.dataset.r), c = parseInt(sq.dataset.c);
+        const alg = algebraic(r, c);
+        if (hints.includes(alg)) sq.classList.add('hint'); else sq.classList.remove('hint');
+      });
+    }
+
+    function tryMoveByRC(r1, c1, r2, c2) {
+      const from = algebraic(r1, c1);
+      const to = algebraic(r2, c2);
+      const p = game.get(from);
+      if (!p || p.color !== game.turn()) { drawBoard(); return; }
+
+      if (isPromotionMove(from, to)) {
+        openPromotion(p.color, from, to);
+        return;
+      }
+      doMove(from, to, 'q');
+    }
+
+    function doMove(from, to, promotion = 'q') {
+      const move = game.move({ from, to, promotion });
+      if (move) {
+        lastMove = { from: move.from, to: move.to };
+        selected = null; hints = [];
+        if (!timerInterval) startClock(); // inicia o relógio no primeiro lance válido
+        drawBoard();
+        checkEnd();
+        // Se agora for a vez do bot, deixa ele jogar
+        if (!game.game_over() && botSideSel.value !== 'none' && game.turn() === botSideSel.value && !pendingPromotion) {
+          maybeBotMove();
+        }
+      } else {
+        selected = null; hints = [];
+        drawBoard();
+      }
+    }
+
+    function checkEnd() {
+      if (game.game_over()) {
+        setStatus();
+        stopClock();
+      }
+    }
+
+    // ---------- BOT com IA e controle de dificuldade ----------
+
+    // Valores básicos das peças
+    const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+
+    // Pesos heurísticos
+    const kingSafetyWeight = 10;
+    const centerControlWeight = 20;
+    const mobilityWeight = 5;
+    const centerSquares = ['d4', 'd5', 'e4', 'e5'];
+
+    // Cache de posições já avaliadas
+    const transpositionTable = new Map();
+
+    // Avaliação da posição
+    function evaluateBoard() {
+      let score = 0;
+      const b = game.board();
+
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+          const piece = b[r][c];
+          if (!piece) continue;
+
+          let val = pieceValues[piece.type];
+
+          // Bônus por controle do centro
+          const sq = algebraic(r, c);
+          if (centerSquares.includes(sq)) val += centerControlWeight;
+
+          // Penalidade se o rei estiver exposto
+          if (piece.type === 'k') {
+            const kingZone = getKingZone(sq);
+            const defenders = kingZone.filter(z => {
+              const p = game.get(z);
+              return p && p.color === piece.color;
+            }).length;
+            val -= (8 - defenders) * kingSafetyWeight;
+          }
+
+          score += (piece.color === 'w') ? val : -val;
+        }
+      }
+
+      // Mobilidade
+      const mobility = game.moves().length;
+      score += (game.turn() === 'w' ? mobility : -mobility) * mobilityWeight;
+
+      return score;
+    }
+
+    function getKingZone(sq) {
+      const { r, c } = rcFromAlg(sq);
+      const zone = [];
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+            zone.push(algebraic(nr, nc));
+          }
+        }
+      }
+      return zone;
+    }
+
+    // Ordenação de movimentos
+    function orderMoves(moves) {
+      return moves.sort((a, b) => {
+        const scoreA = (a.flags.includes('c') ? 10 : 0) + (a.promotion ? 5 : 0);
+        const scoreB = (b.flags.includes('c') ? 10 : 0) + (b.promotion ? 5 : 0);
+        return scoreB - scoreA;
+      });
+    }
+
+    // Quiescence Search
+    function quiescence(alpha, beta) {
+      const standPat = evaluateBoard();
+      if (standPat >= beta) return beta;
+      if (alpha < standPat) alpha = standPat;
+
+      const moves = orderMoves(game.moves({ verbose: true }).filter(m => m.flags.includes('c')));
+      for (const m of moves) {
+        game.move(m.san);
+        const score = -quiescence(-beta, -alpha);
+        game.undo();
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+      }
+      return alpha;
+    }
+
+    function minimax(depth, alpha, beta, maximizing) {
+      const hash = game.fen() + depth + maximizing;
+      if (transpositionTable.has(hash)) return transpositionTable.get(hash);
+
+      if (depth === 0 || game.game_over()) {
+        const evalScore = quiescence(alpha, beta);
+        transpositionTable.set(hash, evalScore);
+        return evalScore;
+      }
+
+      const moves = orderMoves(game.moves({ verbose: true }));
+      if (maximizing) {
+        let maxEval = -Infinity;
+        for (const mv of moves) {
+          game.move(mv.san);
+          const evalScore = minimax(depth - 1, alpha, beta, false);
+          game.undo();
+          if (evalScore > maxEval) maxEval = evalScore;
+          if (evalScore > alpha) alpha = evalScore;
+          if (beta <= alpha) break;
+        }
+        transpositionTable.set(hash, maxEval);
+        return maxEval;
+      } else {
+        let minEval = Infinity;
+        for (const mv of moves) {
+          game.move(mv.san);
+          const evalScore = minimax(depth - 1, alpha, beta, true);
+          game.undo();
+          if (evalScore < minEval) minEval = evalScore;
+          if (evalScore < beta) beta = evalScore;
+          if (beta <= alpha) break;
+        }
+        transpositionTable.set(hash, minEval);
+        return minEval;
+      }
+    }
+
+    // Configuração de dificuldade
+    function configurarBot(nivel) {
+      switch (nivel) {
+        case 'fácil': return { depth: 1, chanceErro: 0.4 };
+        case 'médio': return { depth: 3, chanceErro: 0.15 };
+        case 'difícil': return { depth: 5, chanceErro: 0 };
+        default: return { depth: 2, chanceErro: 0.2 };
+      }
+    }
+
+    function bestMoveFor(color, depth, chanceErro = 0) {
+      const moves = orderMoves(game.moves({ verbose: true }));
+      if (!moves.length) return null;
+
+      let scoredMoves = [];
+      for (const m of moves) {
+        game.move(m.san);
+        const score = minimax(depth - 1, -Infinity, Infinity, color !== 'w');
+        game.undo();
+        scoredMoves.push({ move: m, score });
+      }
+
+      scoredMoves.sort((a, b) => color === 'w' ? b.score - a.score : a.score - b.score);
+
+      // Aplica chance de erro
+      if (Math.random() < chanceErro && scoredMoves.length > 1) {
+        const idx = Math.floor(Math.random() * Math.min(3, scoredMoves.length));
+        return scoredMoves[idx].move;
+      }
+
+      return scoredMoves[0].move;
+    }
+
+    // Usa a dificuldade escolhida no UI
+    function maybeBotMove() {
+      const botSide = botSideSel.value;
+      if (botSide === 'none') return;
+      if (game.game_over()) return;
+      if (game.turn() !== botSide) return;
+      if (pendingPromotion) return;
+      if (uiLocked) return;
+
+      uiLocked = true;
+      thinkingBadge.style.display = '';
+
+      setTimeout(() => {
+        const nivel = document.getElementById('botDifficulty').value;
+        const config = configurarBot(nivel);
+
+        const move = bestMoveFor(botSide, config.depth, config.chanceErro);
+        if (move) {
+          game.move(move.san);
+          lastMove = { from: move.from, to: move.to };
+          if (!timerInterval) startClock(); // se o bot fizer o primeiro lance, inicia o relógio
+        }
+        uiLocked = false;
+        thinkingBadge.style.display = 'none';
+        drawBoard();
+        checkEnd();
+      }, 50);
+    }
+
+    // Eventos
+    btnReset.addEventListener('click', () => {
+      game.reset();
+      lastMove = null; selected = null; hints = [];
+      uiLocked = false; thinkingBadge.style.display = 'none';
+      resetClocksFromInput();
+      stopClock(); // relógio parado até o primeiro lance
+      transpositionTable.clear(); // limpa cache da IA ao reiniciar
+      drawBoard();
+      // Se for a vez do bot após reset (lado selecionado e turno coincidir), ele joga:
+      maybeBotMove();
+    });
+
+    btnUndo.addEventListener('click', () => {
+      game.undo();
+      if (botSideSel.value !== 'none') game.undo();
+      lastMove = null; selected = null; hints = [];
+      uiLocked = false; thinkingBadge.style.display = 'none';
+      drawBoard();
+      // Não mexe no relógio aqui; mantém estado atual
+    });
+
+    botSideSel.addEventListener('change', () => {
+      drawBoard(); // se for vez do bot, ele joga (pode iniciar o relógio se for o primeiro lance)
+      maybeBotMove();
+    });
+
+    document.getElementById('botDifficulty').addEventListener('change', () => {
+      transpositionTable.clear(); // evita reuso indevido de avaliações entre níveis
+      maybeBotMove(); // se for a vez do bot, joga com a nova configuração
+    });
+
+    // Fechar modal de promoção clicando fora
+    promoModal.addEventListener('click', (e) => {
+      if (e.target === promoModal) closePromotion();
+    });
+
+    // Inicialização (relógio só começa no primeiro lance)
+    resetClocksFromInput();
+    updateTimerUI();
+    drawBoard();
+    // Se começar sendo a vez do bot (configurado como pretas e brancas jogam primeiro, então normalmente não), está aqui:
+    maybeBotMove();
+  </script>
+</body>
+
+</html>

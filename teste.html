@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Xadrez + Stockfish</title>
+    <style>
+        :root {
+            --sq: 64px;
+            --light: #f0d9b5;
+            --dark: #b58863;
+        }
+
+        body {
+            background: #2c3e50;
+            color: #fff;
+            font-family: system-ui;
+            display: grid;
+            place-items: center;
+            gap: 12px;
+            padding: 24px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, var(--sq));
+            grid-template-rows: repeat(8, var(--sq));
+            border: 5px solid #222;
+            border-radius: 12px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
+            overflow: hidden;
+            background: transparent;
+        }
+
+        .sq {
+            width: var(--sq);
+            height: var(--sq);
+            display: grid;
+            place-items: center;
+            position: relative;
+            user-select: none;
+        }
+
+        .light {
+            background: var(--light);
+        }
+
+        .dark {
+            background: var(--dark);
+        }
+
+        .last {
+            background: #a9d18e !important;
+        }
+
+        .sq img {
+            width: 90%;
+            height: 90%;
+            pointer-events: none;
+            transition: transform .22s ease-out;
+        }
+
+        #thinking {
+            visibility: hidden;
+        }
+
+        body.is-thinking #thinking {
+            visibility: visible;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>♟ Xadrez + Stockfish</h1>
+    <div id="thinking">Bot pensando...</div>
+    <div id="board" class="board" aria-label="Tabuleiro de xadrez"></div>
+
+    <script src="js/chess.min.js"></script>
+    <script>
+        const IMG = { p: "bp.svg", r: "br.svg", n: "bn.svg", b: "bb.svg", q: "bq.svg", k: "bk.svg", P: "wp.svg", R: "wr.svg", N: "wn.svg", B: "wb.svg", Q: "wq.svg", K: "wk.svg" };
+        const boardEl = document.getElementById('board');
+        const thinkingBadge = document.getElementById('thinking');
+
+        const game = new Chess();
+        let lastMove = null; let selected = null; let hints = []; let uiLocked = false;
+        const botSide = 'b';
+
+        function algebraic(r, c) { return String.fromCharCode(97 + c) + (8 - r); }
+        function rcFromAlg(sq) { return { c: sq.charCodeAt(0) - 97, r: 8 - parseInt(sq[1], 10) }; }
+
+        function drawBoard() {
+            const frag = document.createDocumentFragment();
+            const b = game.board();
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const sq = document.createElement('div');
+                    sq.className = 'sq ' + (((r + c) % 2) ? 'dark' : 'light');
+                    const alg = algebraic(r, c);
+                    const piece = b[r][c];
+                    if (lastMove) {
+                        const a = rcFromAlg(lastMove.from), b2 = rcFromAlg(lastMove.to);
+                        if ((a.r === r && a.c === c) || (b2.r === r && b2.c === c)) sq.classList.add('last');
+                    }
+                    if (piece) {
+                        const key = piece.color === 'w' ? piece.type.toUpperCase() : piece.type;
+                        const img = document.createElement('img'); img.src = "img/" + IMG[key]; img.alt = key; sq.appendChild(img);
+                    }
+                    sq.addEventListener('click', () => {
+                        if (!selected) {
+                            const p = game.get(alg);
+                            if (p && p.color === game.turn()) { selected = { r, c }; hints = game.moves({ square: alg, verbose: true }).map(m => m.to); drawBoard(); }
+                        } else {
+                            const from = algebraic(selected.r, selected.c); const to = alg;
+                            const mv = game.move({ from, to, promotion: 'q' });
+                            selected = null; hints = [];
+                            if (mv) { lastMove = { from: mv.from, to: mv.to }; drawBoard(); maybeBotMove(); } else { drawBoard(); }
+                        }
+                    });
+                    frag.appendChild(sq);
+                }
+            }
+            boardEl.replaceChildren(frag);
+        }
+
+        // Stockfish Worker
+        let sfWorker = new Worker('js/stockfish.js');
+        sfWorker.postMessage('uci');
+        function askStockfish(fen, depth = 12) {
+            return new Promise(resolve => {
+                const handler = e => {
+                    const line = e.data || '';
+                    if (line.startsWith('bestmove')) {
+                        sfWorker.removeEventListener('message', handler);
+                        resolve(line.split(' ')[1]);
+                    }
+                };
+                sfWorker.addEventListener('message', handler);
+                sfWorker.postMessage('ucinewgame');
+                sfWorker.postMessage('position fen ' + fen);
+                sfWorker.postMessage('go depth ' + depth);
+            });
+        }
+
+        async function maybeBotMove() {
+            if (game.game_over()) return;
+            if (game.turn() !== botSide) return;
+            if (uiLocked) return;
+
+            uiLocked = true;
+            document.body.classList.add('is-thinking'); thinkingBadge.textContent = 'Bot pensando...';
+
+            const best = await askStockfish(game.fen(), 12);
+            if (best && best !== "(none)") {
+                const from = best.slice(0, 2), to = best.slice(2, 4), promo = best[4];
+                const mv = game.move({ from, to, promotion: promo || 'q' });
+                if (mv) lastMove = { from: mv.from, to: mv.to };
+            }
+
+            uiLocked = false;
+            document.body.classList.remove('is-thinking');
+            drawBoard();
+        }
+
+        drawBoard();
+    </script>
+</body>
+
+</html>
